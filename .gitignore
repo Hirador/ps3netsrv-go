@@ -21,3 +21,6 @@
 /dist
 test_gen.iso
 /ps3netsrv-go
+
+# staged QNAP arch binary (produced by scripts/build-qnap-qpkg.sh)
+/package/qnap/arm-x19/ps3netsrv-go

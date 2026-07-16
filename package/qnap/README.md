@@ -52,16 +52,40 @@ netstat -an | grep 38008
 Set the served directory by editing that package's `config.ini`
 (`root = /share/PS3`) or exporting `PS3NETSRV_ROOT` before start.
 
-## Option B — Build a proper .qpkg (QDK)
+## Option B — Build a proper .qpkg
 
-On a Linux host with the QNAP [QDK](https://github.com/qnap-dev/QDK):
+One command builds the binary and wraps it into an installable `.qpkg`:
 
 ```sh
-# stage the built binary and config into this package dir
-cp dist/ps3netsrv-go-qnap-armv5 package/qnap/shared/ps3netsrv-go
-cp package/qnap/config/config.ini package/qnap/shared/config.ini
-qbuild --build-dir package/qnap
+VERSION=0.0.1 ./scripts/build-qnap-qpkg.sh
+# -> dist/PS3netsrvNG_<version>_arm-x19.qpkg
 ```
 
-The resulting `.qpkg` installs to App Center and is managed via
-`/etc/init.d/PS3netsrvNG.sh {start|stop|restart}`.
+The script runs QNAP's `qbuild` (QDK). QDK only runs on Linux, so if `qbuild`
+is not on your `PATH` the script builds and uses a local Docker image
+(`scripts/qdk.Dockerfile`) **for the build only** — nothing Docker-related is
+installed on or required by the NAS. `VERSION` must be ≤ 10 characters
+(QNAP's `QPKG_VER` limit).
+
+Package layout (QDK conventions):
+
+- `qpkg.cfg` — package metadata (name `PS3netsrvNG`, arch `arm-x19`).
+- `arm-x19/ps3netsrv-go` — the static binary (staged at build time, gitignored).
+- `shared/ps3netsrv-go.sh` — service control script (`start|stop|restart`).
+- `config/config.ini` — default config, preserved across upgrades
+  (`QPKG_CONFIG`).
+
+### Install on the NAS
+
+Copy the `.qpkg` to the NAS and install via **App Center → Install Manually**,
+or over SSH:
+
+```sh
+qpkg_cli --install /path/to/PS3netsrvNG_0.0.1_arm-x19.qpkg   # if available
+# otherwise use App Center's "Install Manually" upload
+```
+
+Once installed it is managed via
+`/etc/init.d/PS3netsrvNG.sh {start|stop|restart}`. Edit the served directory
+in `<install-path>/config.ini` (`root = /share/PS3`); find the install path
+with `/sbin/getcfg PS3netsrvNG Install_Path -f /etc/config/qpkg.conf`.

@@ -1,0 +1,3 @@
+# Package-specific install/remove hooks for ps3netsrv-go.
+# All hooks are optional; none are needed for this static build.
+# See QDK docs for available pkg_* functions and CMD_*/SYS_* definitions.
