@@ -47,12 +47,6 @@ mkdir -p "$STAGE/${ARCH}"
 cp "$BIN" "$STAGE/${ARCH}/ps3netsrv-go"
 chmod +x "$STAGE/${ARCH}/ps3netsrv-go"
 
-# embed the version into the App Center display name ("ps3netsrv <ver>").
-# portable (no sed -i) so it works on both macOS and Linux hosts.
-tmpcfg="$(mktemp)"
-sed "s/^QPKG_DISPLAY_NAME=.*/QPKG_DISPLAY_NAME=\"ps3netsrv ${CLEAN_VERSION}\"/" \
-    "$STAGE/qpkg.cfg" > "$tmpcfg" && mv "$tmpcfg" "$STAGE/qpkg.cfg"
-
 # 3. run qbuild (native if available, else Docker build-only)
 if command -v qbuild >/dev/null 2>&1; then
     echo ">> building .qpkg with native qbuild (arch=${ARCH}) ..."
