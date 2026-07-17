@@ -2,14 +2,18 @@ name: QNAP QPKG
 
 # Builds an installable .qpkg for every supported QNAP architecture.
 # - on pull request / manual run: builds & uploads artifacts (validation)
-# - on tag push (v*):             builds & publishes a GitHub Release
+# - on tag push (qnap-*):         builds & publishes a GitHub Release
 #
 # This is the "spksrc-style" pipeline: bump the pinned ps3netsrv-go version,
 # tag, and every supported platform is rebuilt and released automatically.
+#
+# Packaging releases use their own "qnap-<version>" tag namespace so they never
+# collide with upstream's "v<version>" release tags inherited by the fork.
+# e.g. tag "qnap-0.4.1" -> QPKG_VER 0.4.1.
 
 on:
   push:
-    tags: ['v*']
+    tags: ['qnap-*']
   pull_request:
     paths:
       - 'package/qnap/**'
@@ -52,7 +56,7 @@ jobs:
         id: ver
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            V="${GITHUB_REF_NAME#v}"
+            V="${GITHUB_REF_NAME#qnap-}"
           else
             V="${{ github.event.inputs.version || '0.0.0' }}"
           fi
