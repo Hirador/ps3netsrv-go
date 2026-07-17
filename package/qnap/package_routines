@@ -1,15 +1,23 @@
 # Package-specific install hooks for ps3netsrv-go.
 #
-# Level-1 auto-setup: on install, create a shared folder named "PS3" (open to
-# everyone) with the standard PS3netsrv layout subfolders, so the user can drop
-# game files onto the NAS over the network without any SSH configuration.
+# Level-1 auto-setup: on install, create a shared folder named "PS3" with the
+# standard PS3netsrv layout subfolders, granting the "everyone" and
+# "administrators" groups full access so the user can drop game files onto the
+# NAS over the network without any SSH configuration.
 #
 # Note: the PS3 console does NOT use this SMB share. It talks to the ps3netsrv
 # daemon over the netiso protocol (port 38008); the daemon reads files directly
 # from disk as root. The share exists purely so the user can copy games onto the
 # NAS from a PC. The default config.ini already points "root" at /share/PS3.
+#
+# The share is registered by mirroring the keys QTS itself uses for its default
+# shares (read from the existing "Public" share on this NAS), so permissions
+# behave correctly across QTS versions. We use the "administrators" group rather
+# than the "admin" user, which is disabled by default on newer QTS.
 
 SHARE_NAME="PS3"
+SMB_CONF="/etc/config/smb.conf"
+REF_SHARE="Public"   # default share whose location/volume we mirror
 
 # Print an install-log line via QTS log_tool when available, else stdout.
 _ps3_log() {
@@ -19,18 +27,62 @@ _ps3_log() {
     echo "PS3netsrvNG: $1"
 }
 
-# Resolve the primary data volume mount point (varies by QTS version/model).
+# Resolve the primary data volume by reusing the reference share's volume, with
+# sensible fallbacks (mount point varies by QTS version/model).
 _ps3_default_volume() {
-    local v
-    v=$(/sbin/getcfg SHARE_DEF defVolMP -d "" -f /etc/config/def_share.info 2>/dev/null)
-    if [ -n "$v" ] && [ -d "$v" ]; then
-        echo "$v"; return 0
+    local p v
+    # e.g. Public path = /share/HDA_DATA/Public  ->  /share/HDA_DATA
+    p=$(/sbin/getcfg "$REF_SHARE" path -d "" -f "$SMB_CONF" 2>/dev/null)
+    if [ -n "$p" ]; then
+        v=$(dirname "$p")
+        [ -d "$v" ] && { echo "$v"; return 0; }
     fi
+    v=$(/sbin/getcfg SHARE_DEF defVolMP -d "" -f /etc/config/def_share.info 2>/dev/null)
+    [ -n "$v" ] && [ -d "$v" ] && { echo "$v"; return 0; }
     for v in /share/CACHEDEV1_DATA /share/HDA_DATA /share/MD0_DATA /share/CACHEDEV2_DATA; do
         [ -d "$v" ] && { echo "$v"; return 0; }
     done
-    # last resort: parent of the QPKG install dir
     echo "${SYS_QPKG_DIR%/.qpkg/*}"
+}
+
+# Register the SMB share by mirroring QTS's default-share key set.
+# Grants everyone + administrators read/write. Idempotent: skips if present.
+_ps3_register_share() {
+    local share_path="$1"
+    [ -x /sbin/setcfg ] || return 0
+    [ -f "$SMB_CONF" ] || return 0
+
+    # already fully configured? (uses "valid users" as the sentinel, which we
+    # always set) leave any user customisations untouched. A partial section
+    # from an older package version (path but no permissions) is repaired.
+    if /sbin/getcfg "$SHARE_NAME" "valid users" -f "$SMB_CONF" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    set_key() { /sbin/setcfg "$SHARE_NAME" "$1" "$2" -f "$SMB_CONF" 2>/dev/null || true; }
+
+    set_key "comment"                            "PS3netsrv shared folder"
+    set_key "path"                               "$share_path"
+    set_key "browsable"                          "yes"
+    set_key "oplocks"                            "yes"
+    set_key "ftp write only"                     "no"
+    set_key "recycle bin"                        "yes"
+    set_key "recycle bin administrators only"    "no"
+    set_key "qbox"                               "no"
+    set_key "public"                             "yes"
+    set_key "invalid users"                      '"guest"'
+    set_key "read list"                          '@"everyone"'
+    set_key "write list"                         '@"administrators",@"everyone"'
+    set_key "valid users"                        '"root",@"administrators",@"everyone"'
+    set_key "inherit permissions"                "yes"
+    set_key "smb encrypt"                         "disabled"
+    set_key "mangled names"                      "yes"
+
+    # apply
+    if [ -x /etc/init.d/smb.sh ]; then
+        /etc/init.d/smb.sh restart >/dev/null 2>&1 || \
+            /etc/init.d/smb.sh reload >/dev/null 2>&1 || true
+    fi
 }
 
 pkg_post_install() {
@@ -44,7 +96,7 @@ pkg_post_install() {
         mkdir -p "$share_path/$d"
     done
 
-    # 2. open permissions so any LAN user can add games (guest/everyone)
+    # 2. POSIX perms (QTS applies ACLs on top via inherit permissions)
     chmod -R 0777 "$share_path" 2>/dev/null || true
 
     # 3. expose it at the conventional /share/PS3 path (config.ini default)
@@ -52,20 +104,8 @@ pkg_post_install() {
         ln -sf "$share_path" "/share/$SHARE_NAME" 2>/dev/null || true
     fi
 
-    # 4. best-effort: register as a browsable, guest-writable SMB share.
-    #    Guarded so a failure never aborts the install. The exact mechanism
-    #    differs across QTS versions; verify visibility in File Station and,
-    #    if absent, add "$share_path" as a shared folder via Control Panel.
-    if [ -x /sbin/setcfg ] && [ -f /etc/config/smb.conf ]; then
-        if ! /sbin/getcfg "$SHARE_NAME" path -f /etc/config/smb.conf >/dev/null 2>&1; then
-            /sbin/setcfg "$SHARE_NAME" path "$share_path"  -f /etc/config/smb.conf 2>/dev/null || true
-            /sbin/setcfg "$SHARE_NAME" browseable "yes"    -f /etc/config/smb.conf 2>/dev/null || true
-            /sbin/setcfg "$SHARE_NAME" writable "yes"      -f /etc/config/smb.conf 2>/dev/null || true
-            /sbin/setcfg "$SHARE_NAME" "guest ok" "yes"    -f /etc/config/smb.conf 2>/dev/null || true
-            # reload samba if a known reload path exists
-            [ -x /etc/init.d/smb.sh ] && /etc/init.d/smb.sh reload >/dev/null 2>&1 || true
-        fi
-    fi
+    # 4. register the SMB share with correct QTS permissions
+    _ps3_register_share "$share_path"
 
     _ps3_log "PS3 share ready at $share_path (served via /share/$SHARE_NAME). Put PS3 ISOs in the PS3ISO subfolder."
 }
