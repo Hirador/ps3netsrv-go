@@ -72,9 +72,12 @@ is rebuilt and released.
 
 Copy the matching `.qpkg` to the NAS and install via **App Center → Install
 Manually**. On install the package **auto-creates a shared folder `PS3`**
-(open to everyone) with the standard layout (`PS3ISO`, `PS2ISO`, `PS1ISO`,
-`GAMES`, …) and points the server at `/share/PS3` — no SSH needed. Copy your
-PS3 ISOs into the `PS3ISO` subfolder from your PC.
+(open to everyone) with the standard [webMAN MOD layout][layout] (`GAMES`,
+`PS3ISO`, `PSXISO`, `PS2ISO`, `PSPISO`, `BDISO`, `DVDISO`, `ROMS`, `GAMEI`,
+`PKG`, `MOVIES`, `MUSIC`, `PICTURE`) and points the server at `/share/PS3` —
+no SSH needed. Copy your PS3 ISOs into the `PS3ISO` subfolder from your PC.
+
+[layout]: https://github.com/aldostools/webMAN-MOD/wiki/~-PS3-NET-Server
 
 > The PS3 console connects to the daemon on TCP **38008** (netiso protocol),
 > not to the SMB share. The share is only so you can copy games onto the NAS.

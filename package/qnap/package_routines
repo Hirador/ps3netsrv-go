@@ -91,9 +91,10 @@ pkg_post_install() {
     vol=$(_ps3_default_volume)
     share_path="$vol/$SHARE_NAME"
 
-    # 1. create the share folder + standard layout
+    # 1. create the share folder + standard webMAN MOD layout
+    #    (https://github.com/aldostools/webMAN-MOD/wiki/~-PS3-NET-Server)
     mkdir -p "$share_path"
-    for d in PS3ISO PS2ISO PS1ISO PSPISO BDISO DVDISO GAMES PKG; do
+    for d in GAMES PS3ISO PSXISO PS2ISO PSPISO BDISO DVDISO ROMS GAMEI PKG MOVIES MUSIC PICTURE; do
         mkdir -p "$share_path/$d"
     done
 
