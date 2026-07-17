@@ -71,7 +71,8 @@ _ps3_register_share() {
     set_key "qbox"                               "no"
     set_key "public"                             "yes"
     set_key "invalid users"                      '"guest"'
-    set_key "read list"                          '@"everyone"'
+    # everyone + administrators get read/write via write list; do NOT also put
+    # them in read list or QTS shows a duplicate read-only entry.
     set_key "write list"                         '@"administrators",@"everyone"'
     set_key "valid users"                        '"root",@"administrators",@"everyone"'
     set_key "inherit permissions"                "yes"
