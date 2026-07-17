@@ -4,7 +4,7 @@
 # Follows the QDK service-program convention (start|stop|restart|remove).
 #
 CONF=/etc/config/qpkg.conf
-QPKG_NAME="ps3netsrv"
+QPKG_NAME="ps3netsrv-go"
 QPKG_ROOT=$(/sbin/getcfg "$QPKG_NAME" Install_Path -f "$CONF")
 export QNAP_QPKG=$QPKG_NAME
 

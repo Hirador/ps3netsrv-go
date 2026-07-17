@@ -37,14 +37,14 @@ Build one architecture:
 
 ```sh
 VERSION=0.4.1 ./scripts/build-qnap-qpkg.sh arm-x19
-# -> dist/ps3netsrv_0.4.1_arm-x19.qpkg
+# -> dist/ps3netsrv-go_0.4.1_arm-x19.qpkg
 ```
 
 Build all architectures:
 
 ```sh
 VERSION=0.4.1 ./scripts/build-qnap-all.sh
-# -> dist/ps3netsrv_0.4.1_<arch>.qpkg  (one per arch)
+# -> dist/ps3netsrv-go_0.4.1_<arch>.qpkg  (one per arch)
 ```
 
 The scripts cross-compile the static binary (Go, from a single host) and wrap it
@@ -62,7 +62,7 @@ is rebuilt and released.
 
 ## Package layout (QDK conventions)
 
-- `qpkg.cfg` — package metadata (name `ps3netsrv`).
+- `qpkg.cfg` — package metadata (name `ps3netsrv-go`).
 - `<arch>/ps3netsrv-go` — the static binary per arch (staged at build, gitignored).
 - `shared/ps3netsrv-go.sh` — service control script (`start|stop|restart`).
 - `config/config.ini` — default config, preserved across upgrades (`QPKG_CONFIG`).
@@ -82,20 +82,20 @@ no SSH needed. Copy your PS3 ISOs into the `PS3ISO` subfolder from your PC.
 > The PS3 console connects to the daemon on TCP **38008** (netiso protocol),
 > not to the SMB share. The share is only so you can copy games onto the NAS.
 
-Service management: `/etc/init.d/ps3netsrv.sh {start|stop|restart}`. To serve a
+Service management: `/etc/init.d/ps3netsrv-go.sh {start|stop|restart}`. To serve a
 different folder, edit `root` in `<install-path>/config.ini` (find it with
-`/sbin/getcfg ps3netsrv Install_Path -f /etc/config/qpkg.conf`).
+`/sbin/getcfg ps3netsrv-go Install_Path -f /etc/config/qpkg.conf`).
 
 ## Quick drop-in test (existing install)
 
-To swap just the binary into an already-installed `ps3netsrv`:
+To swap just the binary into an already-installed `ps3netsrv-go`:
 
 ```sh
 scp dist/ps3netsrv-go-qnap-arm-x19 admin@<nas-ip>:/tmp/
 # on the NAS:
-QPKG=$(/sbin/getcfg ps3netsrv Install_Path -f /etc/config/qpkg.conf)
-/etc/init.d/ps3netsrv.sh stop
+QPKG=$(/sbin/getcfg ps3netsrv-go Install_Path -f /etc/config/qpkg.conf)
+/etc/init.d/ps3netsrv-go.sh stop
 cp /tmp/ps3netsrv-go-qnap-arm-x19 "$QPKG/ps3netsrv-go"; chmod +x "$QPKG/ps3netsrv-go"
-/etc/init.d/ps3netsrv.sh start
+/etc/init.d/ps3netsrv-go.sh start
 netstat -an | grep 38008
 ```

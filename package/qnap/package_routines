@@ -22,9 +22,9 @@ REF_SHARE="Public"   # default share whose location/volume we mirror
 # Print an install-log line via QTS log_tool when available, else stdout.
 _ps3_log() {
     if [ -x /sbin/log_tool ]; then
-        /sbin/log_tool -t 0 -a "ps3netsrv: $1" 2>/dev/null || true
+        /sbin/log_tool -t 0 -a "ps3netsrv-go: $1" 2>/dev/null || true
     fi
-    echo "ps3netsrv: $1"
+    echo "ps3netsrv-go: $1"
 }
 
 # Resolve the primary data volume by reusing the reference share's volume, with
