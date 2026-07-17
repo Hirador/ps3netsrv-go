@@ -1,0 +1,87 @@
+name: QNAP QPKG
+
+# Builds an installable .qpkg for every supported QNAP architecture.
+# - on pull request / manual run: builds & uploads artifacts (validation)
+# - on tag push (v*):             builds & publishes a GitHub Release
+#
+# This is the "spksrc-style" pipeline: bump the pinned ps3netsrv-go version,
+# tag, and every supported platform is rebuilt and released automatically.
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - 'package/qnap/**'
+      - 'scripts/**'
+      - '.github/workflows/qnap-qpkg.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'QPKG version (<=10 chars, e.g. 0.4.1-1)'
+        required: false
+        default: '0.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm-x19, arm-x31, arm-x41, arm_64, x86, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install QDK (qbuild)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync fakeroot
+          git clone --depth 1 https://github.com/qnap-dev/QDK /tmp/QDK
+          cd /tmp/QDK && sudo ./InstallToUbuntu.sh install
+          echo "/usr/share/QDK/bin" >> "$GITHUB_PATH"
+
+      - name: Determine version
+        id: ver
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="${{ github.event.inputs.version || '0.0.0' }}"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Building version: $V"
+
+      - name: Build .qpkg (${{ matrix.arch }})
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: ./scripts/build-qnap-qpkg.sh "${{ matrix.arch }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpkg-${{ matrix.arch }}
+          path: dist/*_${{ matrix.arch }}.qpkg
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -la artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.qpkg
+          generate_release_notes: true

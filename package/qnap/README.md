@@ -1,91 +1,98 @@
-# PS3netsrv-go on legacy ARMv5 QNAP NAS
+# PS3netsrv-go for QNAP
 
-This directory packages `ps3netsrv-go` for **old Marvell Kirkwood ARMv5 QNAP
-units** (TS-119 / TS-219 / TS-419 / TS-x12 class — `uname -m` reports
-`armv5tel`), running QTS 4.x on **uClibc**.
+This directory packages `ps3netsrv-go` as an installable QNAP `.qpkg` for every
+supported architecture, from legacy Marvell Kirkwood ARMv5 units (QTS 4.x,
+uClibc) up to modern ARM64 / x86-64 models.
 
-## Why this exists
+## Why a dedicated build
 
-The stock/third-party QPKG and the generic upstream `linux/arm` release do not
-run on this hardware:
+Stock/third-party QPKGs and the generic upstream `linux/arm` release fail on
+older hardware:
 
-| Problem | Cause | Fix in this build |
+| Problem | Cause | Fix in these builds |
 |---|---|---|
 | `undefined symbol: pthread_attr_getstacksize` | binary built with **cgo** against a newer libc | `CGO_ENABLED=0` |
-| would crash with illegal instruction | upstream `arm` release uses default **GOARM=7** | `GOARM=5` |
-| needs `/lib/ld-linux.so.3` (glibc) | `purego` dynamically links libc | `-tags nopurego` → fully static |
+| illegal instruction on ARMv5 | upstream `arm` release uses default **GOARM=7** | per-arch `GOARM` (5 for Kirkwood) |
+| needs glibc `/lib/ld-linux.so.3` | `purego` dynamically links libc | `-tags nopurego` → fully static |
+| PS3 ISOs (>2 GB) won't open on 32-bit | `os.Root` omits `O_LARGEFILE` | `fs.StrictSystemRoot` wrapper (see `pkg/fs/strict_root.go`) |
 
 Trade-off: `nopurego` drops optional **CHD** (compressed disc image) support,
-which would otherwise need an external `libchdr.so` that is impractical to
-provide on ARMv5. Plain ISO/PKG streaming is unaffected.
+which needs an external `libchdr.so`. Plain ISO/CSO/ZSO/PKG streaming is
+unaffected.
 
-## Build the binary
+## Supported architectures
 
-From the repository root, with a Go toolchain installed:
+| QDK arch | Go target | Hardware |
+|---|---|---|
+| `arm-x19` | `arm` GOARM=5 | Marvell Kirkwood ARMv5 (TS-x19/x12, uClibc) |
+| `arm-x31` | `arm` GOARM=7 | Marvell Armada ARMv7 (TS-x31) |
+| `arm-x41` | `arm` GOARM=7 | Annapurna Alpine ARMv7 (TS-x41) |
+| `arm_64` | `arm64` | ARMv8 64-bit |
+| `x86` | `386` | 32-bit Intel/Atom |
+| `x86_64` | `amd64` | 64-bit Intel/AMD |
+
+## Building
+
+Build one architecture:
 
 ```sh
-./scripts/build-qnap-armv5.sh
-# -> dist/ps3netsrv-go-qnap-armv5   (ELF 32-bit ARM EABI5, statically linked)
+VERSION=0.4.1-1 ./scripts/build-qnap-qpkg.sh arm-x19
+# -> dist/PS3netsrvNG_0.4.1-1_arm-x19.qpkg
 ```
 
-Confirm the output says **`statically linked`** (not `dynamically linked`).
-
-## Option A — Quick drop-in test (existing PS3netsrvNG install)
-
-If you already installed the myqnap.org `PS3netsrvNG` QPKG, just replace its
-binary to validate the fix immediately:
+Build all architectures:
 
 ```sh
-# on your Mac/PC
-scp dist/ps3netsrv-go-qnap-armv5 admin@<nas-ip>:/tmp/
+VERSION=0.4.1-1 ./scripts/build-qnap-all.sh
+# -> dist/PS3netsrvNG_0.4.1-1_<arch>.qpkg  (one per arch)
+```
 
-# on the NAS (SSH), find the install path
+The scripts cross-compile the static binary (Go, from a single host) and wrap it
+with QNAP's `qbuild` (QDK). QDK only runs on Linux; if `qbuild` isn't on your
+`PATH` the scripts use a local Docker image (`scripts/qdk.Dockerfile`) **for the
+build only** — nothing Docker-related is installed on or required by the NAS.
+`VERSION` must be ≤ 10 characters (QNAP's `QPKG_VER` limit).
+
+### CI / releases
+
+`.github/workflows/qnap-qpkg.yml` builds every architecture in a matrix. Push a
+`v*` tag and it publishes a GitHub Release with all `.qpkg`s attached. This is
+the maintenance loop: bump the pinned upstream version, tag, and every platform
+is rebuilt and released.
+
+## Package layout (QDK conventions)
+
+- `qpkg.cfg` — package metadata (name `PS3netsrvNG`).
+- `<arch>/ps3netsrv-go` — the static binary per arch (staged at build, gitignored).
+- `shared/ps3netsrv-go.sh` — service control script (`start|stop|restart`).
+- `config/config.ini` — default config, preserved across upgrades (`QPKG_CONFIG`).
+- `package_routines` — install hook that auto-creates the `PS3` share + layout.
+
+## Installing on the NAS
+
+Copy the matching `.qpkg` to the NAS and install via **App Center → Install
+Manually**. On install the package **auto-creates a shared folder `PS3`**
+(open to everyone) with the standard layout (`PS3ISO`, `PS2ISO`, `PS1ISO`,
+`GAMES`, …) and points the server at `/share/PS3` — no SSH needed. Copy your
+PS3 ISOs into the `PS3ISO` subfolder from your PC.
+
+> The PS3 console connects to the daemon on TCP **38008** (netiso protocol),
+> not to the SMB share. The share is only so you can copy games onto the NAS.
+
+Service management: `/etc/init.d/PS3netsrvNG.sh {start|stop|restart}`. To serve a
+different folder, edit `root` in `<install-path>/config.ini` (find it with
+`/sbin/getcfg PS3netsrvNG Install_Path -f /etc/config/qpkg.conf`).
+
+## Quick drop-in test (existing install)
+
+To swap just the binary into an already-installed `PS3netsrvNG`:
+
+```sh
+scp dist/ps3netsrv-go-qnap-arm-x19 admin@<nas-ip>:/tmp/
+# on the NAS:
 QPKG=$(/sbin/getcfg PS3netsrvNG Install_Path -f /etc/config/qpkg.conf)
 /etc/init.d/PS3netsrvNG.sh stop
-cp /tmp/ps3netsrv-go-qnap-armv5 "$QPKG/ps3netsrv-go"
-chmod +x "$QPKG/ps3netsrv-go"
+cp /tmp/ps3netsrv-go-qnap-arm-x19 "$QPKG/ps3netsrv-go"; chmod +x "$QPKG/ps3netsrv-go"
 /etc/init.d/PS3netsrvNG.sh start
-# verify it is listening
 netstat -an | grep 38008
 ```
-
-Set the served directory by editing that package's `config.ini`
-(`root = /share/PS3`) or exporting `PS3NETSRV_ROOT` before start.
-
-## Option B — Build a proper .qpkg
-
-One command builds the binary and wraps it into an installable `.qpkg`:
-
-```sh
-VERSION=0.0.1 ./scripts/build-qnap-qpkg.sh
-# -> dist/PS3netsrvNG_<version>_arm-x19.qpkg
-```
-
-The script runs QNAP's `qbuild` (QDK). QDK only runs on Linux, so if `qbuild`
-is not on your `PATH` the script builds and uses a local Docker image
-(`scripts/qdk.Dockerfile`) **for the build only** — nothing Docker-related is
-installed on or required by the NAS. `VERSION` must be ≤ 10 characters
-(QNAP's `QPKG_VER` limit).
-
-Package layout (QDK conventions):
-
-- `qpkg.cfg` — package metadata (name `PS3netsrvNG`, arch `arm-x19`).
-- `arm-x19/ps3netsrv-go` — the static binary (staged at build time, gitignored).
-- `shared/ps3netsrv-go.sh` — service control script (`start|stop|restart`).
-- `config/config.ini` — default config, preserved across upgrades
-  (`QPKG_CONFIG`).
-
-### Install on the NAS
-
-Copy the `.qpkg` to the NAS and install via **App Center → Install Manually**,
-or over SSH:
-
-```sh
-qpkg_cli --install /path/to/PS3netsrvNG_0.0.1_arm-x19.qpkg   # if available
-# otherwise use App Center's "Install Manually" upload
-```
-
-Once installed it is managed via
-`/etc/init.d/PS3netsrvNG.sh {start|stop|restart}`. Edit the served directory
-in `<install-path>/config.ini` (`root = /share/PS3`); find the install path
-with `/sbin/getcfg PS3netsrvNG Install_Path -f /etc/config/qpkg.conf`.

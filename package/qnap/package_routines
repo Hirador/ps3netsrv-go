@@ -1,3 +1,71 @@
-# Package-specific install/remove hooks for ps3netsrv-go.
-# All hooks are optional; none are needed for this static build.
-# See QDK docs for available pkg_* functions and CMD_*/SYS_* definitions.
+# Package-specific install hooks for ps3netsrv-go.
+#
+# Level-1 auto-setup: on install, create a shared folder named "PS3" (open to
+# everyone) with the standard PS3netsrv layout subfolders, so the user can drop
+# game files onto the NAS over the network without any SSH configuration.
+#
+# Note: the PS3 console does NOT use this SMB share. It talks to the ps3netsrv
+# daemon over the netiso protocol (port 38008); the daemon reads files directly
+# from disk as root. The share exists purely so the user can copy games onto the
+# NAS from a PC. The default config.ini already points "root" at /share/PS3.
+
+SHARE_NAME="PS3"
+
+# Print an install-log line via QTS log_tool when available, else stdout.
+_ps3_log() {
+    if [ -x /sbin/log_tool ]; then
+        /sbin/log_tool -t 0 -a "PS3netsrvNG: $1" 2>/dev/null || true
+    fi
+    echo "PS3netsrvNG: $1"
+}
+
+# Resolve the primary data volume mount point (varies by QTS version/model).
+_ps3_default_volume() {
+    local v
+    v=$(/sbin/getcfg SHARE_DEF defVolMP -d "" -f /etc/config/def_share.info 2>/dev/null)
+    if [ -n "$v" ] && [ -d "$v" ]; then
+        echo "$v"; return 0
+    fi
+    for v in /share/CACHEDEV1_DATA /share/HDA_DATA /share/MD0_DATA /share/CACHEDEV2_DATA; do
+        [ -d "$v" ] && { echo "$v"; return 0; }
+    done
+    # last resort: parent of the QPKG install dir
+    echo "${SYS_QPKG_DIR%/.qpkg/*}"
+}
+
+pkg_post_install() {
+    local vol share_path d
+    vol=$(_ps3_default_volume)
+    share_path="$vol/$SHARE_NAME"
+
+    # 1. create the share folder + standard layout
+    mkdir -p "$share_path"
+    for d in PS3ISO PS2ISO PS1ISO PSPISO BDISO DVDISO GAMES PKG; do
+        mkdir -p "$share_path/$d"
+    done
+
+    # 2. open permissions so any LAN user can add games (guest/everyone)
+    chmod -R 0777 "$share_path" 2>/dev/null || true
+
+    # 3. expose it at the conventional /share/PS3 path (config.ini default)
+    if [ ! -e "/share/$SHARE_NAME" ]; then
+        ln -sf "$share_path" "/share/$SHARE_NAME" 2>/dev/null || true
+    fi
+
+    # 4. best-effort: register as a browsable, guest-writable SMB share.
+    #    Guarded so a failure never aborts the install. The exact mechanism
+    #    differs across QTS versions; verify visibility in File Station and,
+    #    if absent, add "$share_path" as a shared folder via Control Panel.
+    if [ -x /sbin/setcfg ] && [ -f /etc/config/smb.conf ]; then
+        if ! /sbin/getcfg "$SHARE_NAME" path -f /etc/config/smb.conf >/dev/null 2>&1; then
+            /sbin/setcfg "$SHARE_NAME" path "$share_path"  -f /etc/config/smb.conf 2>/dev/null || true
+            /sbin/setcfg "$SHARE_NAME" browseable "yes"    -f /etc/config/smb.conf 2>/dev/null || true
+            /sbin/setcfg "$SHARE_NAME" writable "yes"      -f /etc/config/smb.conf 2>/dev/null || true
+            /sbin/setcfg "$SHARE_NAME" "guest ok" "yes"    -f /etc/config/smb.conf 2>/dev/null || true
+            # reload samba if a known reload path exists
+            [ -x /etc/init.d/smb.sh ] && /etc/init.d/smb.sh reload >/dev/null 2>&1 || true
+        fi
+    fi
+
+    _ps3_log "PS3 share ready at $share_path (served via /share/$SHARE_NAME). Put PS3 ISOs in the PS3ISO subfolder."
+}
