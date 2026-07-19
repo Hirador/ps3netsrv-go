@@ -14,7 +14,7 @@ older hardware:
 | `undefined symbol: pthread_attr_getstacksize` | binary built with **cgo** against a newer libc | `CGO_ENABLED=0` |
 | illegal instruction on ARMv5 | upstream `arm` release uses default **GOARM=7** | per-arch `GOARM` (5 for Kirkwood) |
 | needs glibc `/lib/ld-linux.so.3` | `purego` dynamically links libc | `-tags nopurego` → fully static |
-| PS3 ISOs (>2 GB) won't open on 32-bit | `os.Root` omits `O_LARGEFILE` | `fs.StrictSystemRoot` wrapper (see `pkg/fs/strict_root.go`) |
+| PS3 ISOs (>2 GB) won't open on 32-bit | `os.Root` omits `O_LARGEFILE` | `osutil.StrictSystemRoot` wrapper (see `internal/osutil/strict_root.go`) |
 
 Trade-off: `nopurego` drops optional **CHD** (compressed disc image) support,
 which needs an external `libchdr.so`. Plain ISO/CSO/ZSO/PKG streaming is
