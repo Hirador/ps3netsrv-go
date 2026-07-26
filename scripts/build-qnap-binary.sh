@@ -5,10 +5,11 @@
 # Usage: scripts/build-qnap-binary.sh <qdk-arch>
 #   e.g. scripts/build-qnap-binary.sh arm-x19
 #
-# The build is CGO-free and statically linked (-tags nopurego) so it runs on
-# any QTS/libc variant without dynamic-loader or glibc-symbol issues. This
-# drops optional CHD support (which needs an external libchdr.so); ISO/CSO/ZSO/
-# PKG streaming is unaffected.
+# CGO-free either way. CHD-enabled arches (see qnap_arch_chd_target) build with
+# purego so the server can dlopen a bundled libchdr.so at runtime; the rest build
+# fully static (-tags nopurego) so they run on any QTS/libc variant without
+# dynamic-loader or glibc-symbol issues (dropping only CHD). ISO/CSO/ZSO/PKG
+# streaming is unaffected on all arches.
 #
 set -euo pipefail
 
@@ -23,11 +24,19 @@ VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo d
 OUT="${OUT:-dist/ps3netsrv-go-qnap-${ARCH}}"
 mkdir -p "$(dirname "$OUT")"
 
-echo "Building ps3netsrv-go  arch=${ARCH}  GOARCH=${GOARCH} GOARM=${GOARM:-n/a}  version=${VERSION}"
+# CHD-enabled arch -> purego (dynamic, needs libchdr.so); else fully static.
+TAGS_ARGS=(-tags nopurego)
+BUILDKIND="static (nopurego, no CHD)"
+if [ -n "$(qnap_arch_chd_target "$ARCH")" ]; then
+    TAGS_ARGS=()
+    BUILDKIND="purego (CHD-capable)"
+fi
+
+echo "Building ps3netsrv-go  arch=${ARCH}  GOARCH=${GOARCH} GOARM=${GOARM:-n/a}  version=${VERSION}  [${BUILDKIND}]"
 
 CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" GOARM="${GOARM}" \
   go build \
-    -tags nopurego \
+    ${TAGS_ARGS[@]+"${TAGS_ARGS[@]}"} \
     -trimpath \
     -ldflags "-w -s -X 'main.Version=${VERSION}'" \
     -o "${OUT}" \

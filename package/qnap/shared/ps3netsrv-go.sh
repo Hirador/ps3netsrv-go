@@ -13,6 +13,13 @@ CONFIG="$QPKG_ROOT/config.ini"
 PIDFILE="$QPKG_ROOT/ps3netsrv-go.pid"
 LOGFILE="$QPKG_ROOT/ps3netsrv-go.log"
 
+# CHD-enabled (purego) builds bundle a libchdr.so beside the binary; make it
+# discoverable by purego's dlopen. On glibc < 2.34 the pthread_* symbols live in
+# libpthread, so preload it when present. Both are harmless no-ops on the static
+# (nopurego) builds, which ship no libchdr.so and never dlopen.
+export LD_LIBRARY_PATH="$QPKG_ROOT:$LD_LIBRARY_PATH"
+[ -e /lib/libpthread.so.0 ] && export LD_PRELOAD="/lib/libpthread.so.0:$LD_PRELOAD"
+
 is_running() {
     [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
 }

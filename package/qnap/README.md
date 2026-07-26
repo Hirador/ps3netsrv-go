@@ -16,20 +16,34 @@ older hardware:
 | needs glibc `/lib/ld-linux.so.3` | `purego` dynamically links libc | `-tags nopurego` → fully static |
 | PS3 ISOs (>2 GB) won't open on 32-bit | `os.Root` omits `O_LARGEFILE` | `osutil.StrictSystemRoot` wrapper (see `internal/osutil/strict_root.go`) |
 
-Trade-off: `nopurego` drops optional **CHD** (compressed disc image) support,
-which needs an external `libchdr.so`. Plain ISO/CSO/ZSO/PKG streaming is
-unaffected.
+## CHD support — compatibility disclaimer
+
+> **CHD (MAME compressed disc image) support requires a QNAP with `glibc >= 2.21`
+> and a hardware-FP CPU (x86-64, ARM64, or modern ARMv7).** Check yours over SSH
+> with `ldd --version`. It is **not** available on legacy models: Marvell
+> Kirkwood **ARMv5** (no hardware floating point) or units still on **QTS 4.3.x
+> (glibc 2.17)**. All other formats (ISO / CSO / ZSO / PKG) work on **every**
+> supported model.
+>
+> Accordingly, the **`x86_64` and `arm_64` packages ship with CHD enabled**
+> (purego + a bundled `libchdr.so`); the **32-bit ARM packages are CHD-free
+> static builds** that run on any QTS/libc. Grab the package matching your model,
+> and if you specifically need CHD, confirm your glibc first.
+
+This was verified on real hardware: CHD works on an x86-64 unit (glibc 2.21) and
+a modern glibc; it is rejected by the QTS 4.3 loader (glibc 2.17) and impossible
+on ARMv5 (purego's ARM call bridge uses VFP instructions the CPU lacks).
 
 ## Supported architectures
 
-| QDK arch | Go target | Hardware |
-|---|---|---|
-| `arm-x19` | `arm` GOARM=5 | Marvell Kirkwood ARMv5 (TS-x19/x12, uClibc) |
-| `arm-x31` | `arm` GOARM=7 | Marvell Armada ARMv7 (TS-x31) |
-| `arm-x41` | `arm` GOARM=7 | Annapurna Alpine ARMv7 (TS-x41) |
-| `arm_64` | `arm64` | ARMv8 64-bit |
-| `x86` | `386` | 32-bit Intel/Atom |
-| `x86_64` | `amd64` | 64-bit Intel/AMD |
+| QDK arch | Go target | Build | CHD | Hardware |
+|---|---|---|---|---|
+| `arm-x19` | `arm` GOARM=5 | static (nopurego) | no | Marvell Kirkwood ARMv5 (TS-x19/x12) |
+| `arm-x31` | `arm` GOARM=7 | static (nopurego) | no | Marvell Armada ARMv7 (TS-x31) |
+| `arm-x41` | `arm` GOARM=7 | static (nopurego) | no | Annapurna Alpine ARMv7 (TS-x41) |
+| `arm_64` | `arm64` | purego + libchdr | **yes** | ARMv8 64-bit |
+| `x86` | `386` | static (nopurego) | no | 32-bit Intel/Atom |
+| `x86_64` | `amd64` | purego + libchdr | **yes** | 64-bit Intel/AMD |
 
 ## Building
 

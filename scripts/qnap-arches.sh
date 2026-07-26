@@ -29,3 +29,23 @@ qnap_arch_to_go() {
         *) echo "unsupported QNAP arch: $1" >&2; return 1 ;;
     esac
 }
+
+# CHD (MAME compressed disc image) support needs the purego build + an external
+# libchdr.so loaded at runtime. That only works where the CPU has hardware FP
+# (purego's call bridge uses VFP) AND the QTS glibc is recent enough (>= ~2.21)
+# to load a modern shared library. The 64-bit arches are always modern QTS with
+# hardware FP, so we enable CHD there. Legacy 32-bit ARM stays on the fully
+# static nopurego build (CHD off) which runs on any QTS/libc:
+#   - arm-x19 (ARMv5) has no VFP at all -> purego SIGILLs;
+#   - arm-x31/arm-x41 (ARMv7) span old QTS 4.3 (glibc 2.17) where a purego build
+#     may not even start. ISO/CSO/ZSO/PKG streaming is unaffected on all arches.
+#
+# qnap_arch_chd_target <qdk-arch>  ->  prints the C cross-compiler triple to
+# build libchdr for (non-empty = CHD-enabled arch), or "" for static/no-CHD.
+qnap_arch_chd_target() {
+    case "$1" in
+        x86_64) echo "x86_64" ;;   # native gcc
+        arm_64) echo "aarch64" ;;  # aarch64-linux-gnu-gcc
+        *)      echo "" ;;
+    esac
+}

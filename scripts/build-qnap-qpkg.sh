@@ -47,6 +47,15 @@ mkdir -p "$STAGE/${ARCH}"
 cp "$BIN" "$STAGE/${ARCH}/ps3netsrv-go"
 chmod +x "$STAGE/${ARCH}/ps3netsrv-go"
 
+# CHD-enabled arch: bundle libchdr.so next to the binary. The service script
+# adds the install dir to LD_LIBRARY_PATH so purego dlopen's it at runtime.
+if [ -n "$(qnap_arch_chd_target "$ARCH")" ]; then
+    LIBCHDR="dist/libchdr-${ARCH}.so"
+    [ -f "$LIBCHDR" ] || ./scripts/build-libchdr.sh "$ARCH"
+    cp "$LIBCHDR" "$STAGE/${ARCH}/libchdr.so"
+    chmod +x "$STAGE/${ARCH}/libchdr.so"
+fi
+
 # 3. run qbuild (native if available, else Docker build-only)
 if command -v qbuild >/dev/null 2>&1; then
     echo ">> building .qpkg with native qbuild (arch=${ARCH}) ..."
