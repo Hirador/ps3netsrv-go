@@ -16,6 +16,9 @@ will run without any external library on target system.
 * Write protection. Enabled by default, use flag `--allow-write` or corresponding parameter.
 * TCP data exchange timeouts / auto-close of idle connections: configured by `--read-timeout` parameter.
 * [Compressed images](#compressed-images) - save your disk space without filesystem-level compression.
+* [Socket activation](#socket-activation) - run service on-demand, only when client (console) connects.
+* Natively runs as [Windows Service](#windows)
+* Built-in protocol client. See `client` subcommand.
 
 ### Supported ✅
 
@@ -26,11 +29,12 @@ will run without any external library on target system.
 * Virtual ISO: games in directory format (residing in `GAMES`).
 * 3k3y/Redump images: if iso path is `<root>/PS3ISO/game.iso` than dedicated key expected at `<root>/PS3ISO/game.dkey` or at `<root>/REDKEY/game.dkey`
 * "Search remote subfolders" WebMAN feature
+* Drag-N-Drop directory to an executable to create an iso image like in [original ps3netsrv](https://github.com/aldostools/webMAN-MOD/wiki/~-PS3-NET-Server#makeiso)
 
 ### Unsupported ❌
 
 * Multipart files `*.666xx`
-* PS2 Games, more tests/debugging needed https://github.com/xakep666/ps3netsrv-go/issues/31
+* Virtual linked directories (`.ini` file with path instead of directory). IMHO it's absolutely pointless feature. On *nix systems symlinks or bind-mounts can be used. On Windows [symlinks](https://learn.microsoft.com/en-us/windows/win32/fileio/creating-symbolic-links) and [junctions](https://learn.microsoft.com/en-us/windows/win32/fileio/hard-links-and-junctions) can do the same thing.
 
 ## Compressed images
 `ps3netsrv-go` supports compressed images to help save disk space. Currently following formats are supported:
@@ -64,7 +68,7 @@ Use [chdman](https://docs.mamedev.org/tools/chdman.html) tool maintained by MAME
 
 #### Compatibility
 * PS1 (PSX) images: *tested* and **working** ✅ (kudos to @turbosagat for assistance)
-* PS2 images: *tested* and **not working** ❌ (to be investigated in https://github.com/xakep666/ps3netsrv-go/issues/31)
+* PS2 images: *tested* and **working** ✅ (copies whole image to console without streaming, expected behaviour)
 * PS3 images: *untested* ❔ (technically should work because uses same codebase as PS1 images)
 
 #### Limitations
@@ -105,12 +109,23 @@ Resulting `.zst` file may be put into necessary directory under server root: `PS
 
 PS3 will see such images as `.zst.iso` - server intentionally adds .iso extension to help console properly detecting a file type.
 
+## Socket activation
+This is the way to run service only if incomoming connection arrives. It may be useful if you want to lower resource usage because `ps3netsrv-go`
+consumes some CPU and RAM even in idle (without active clients). Key components that used to run service in socket activation mode:
+* Supervisor: [Systemd](https://www.freedesktop.org/software/systemd/man/latest/systemd.socket.html) on Linux, [Launchd](https://grokipedia.com/page/Launchd#socket-activation) on MacOS or any that can pass file descriptor in via fork/exec without accepting connection.
+* Ability accept connections using inherited listener. In `ps3netsrv-go` it's implemented by using `fd:<id>` or `activated:<name>` as listen address.
+* Optional auto-shutdown after some idle time. In `ps3netsrv-go` it's configured by `--shutdown-idle-timeout` flag or corresponding env variable/config entry.
+
+For example how to run under systemd see [Systemd service](#systemd-service) or [MacOS Launchd service](#macos-launchd-service).
+
 ## Installation
 This project shipped in a multiple ways for convenient installation:
 * Docker images: [`docker pull ghcr.io/xakep666/ps3netsrv-go`](https://ghcr.io/xakep666/ps3netsrv-go). `amd64` and `arm64` images are available.
 * Linux packages: deb, rpm and archlinux. See [Releases](https://github.com/xakep666/ps3netsrv-go/releases). 
-If your distro is based on other package manager you may want to use a simple binary and a [systemd unit](./package/linux/ps3netsrv-go.service).
+If your distro is based on other package manager you may want to use a simple binary and a [systemd unit](./package/linux/ps3netsrv-go@.service).
 * Archived binaries are also available in Releases.
+* AOSC OS [package](https://packages.aosc.io/packages/ps3netsrv-go) maintained by @okamikidfc
+* QNAP NAS packages (qpkg) are available at [@Hirador's repo](https://github.com/Hirador/ps3netsrv-go/releases)
 
 ### libchdr
 This libarary is required to enable CHD images support. It's included in a following release types:
@@ -184,11 +199,35 @@ In-container persistent volume is also available in `/srv/ps3data`.
 Deb, rpm and archlinux packages are shipped with systemd unit. Run
 ```bash
 $ systemctl daemon-reload
-$ systemctl enable ps3netsrv-go
+$ systemctl enable ps3netsrv-go@.service
 ```
 to enable automatic startup.
 
-Config file location is `/etc/ps3netsrv-go/config.ini`. Data location is `/srv/ps3data`. Service is running under separate user `ps3netsrv`.
+Config file location is `/etc/ps3netsrv-go/config.ini`. Data location is `/srv/ps3data`. Service is running under separate user `ps3netsrv`. Systemd unit is templated, template is a config file name. I.e. for `ps3netsrv-go@myconfig.service` it will be `/etc/ps3netsrv-go/myconfig.ini`
+
+If you want to run service in socket-activation mode use
+```bash
+$ systemctl daemon-reload
+$ systemctl enable ps3netsrv-go.socket
+```
+By default it's configured to listen on port `0.0.0.0:38008` and auto-shutdown after 1 minute of idle. In this case config file path is `/etc/ps3netsrv-go/activated.ini`.
+
+### MacOS Launchd service
+
+Launchd (system supervisor on macOS) also supports socket-activation and there is a `.plist` manifest in this repo to run service in socket-activation mode.
+
+> [!IMPORTANT]
+> `purego` is required to run ps3netsrv-go in socket-activation mode on macOS. So if you used `nopurego` tag during build service won't start.
+
+Currently it's you need to install service manually. Installation steps:
+1. [Build an executable](#building) or get a [release](https://github.com/xakep666/ps3netsrv-go/releases)
+2. Copy `ps3netsrv-go` executable to `/usr/local/bin`
+3. Create a root layout: `cp -R <project-root>/package/layout ~/ps3data`
+4. Place config: `mkdir -p "~/Library/Application Support/ps3netsrv-go" && cp <project-root>/package/macos/config.ini "~/Library/Application Support/ps3netsrv-go"`
+5. Place launchd manifest: `cp <project-root>/package/macos/com.xakep666.ps3netsrv-go.plist ~/Library/LaunchAgents`
+6. Enable launchd service: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.xakep666.ps3netsrv-go.plist`
+7. Verify if it's enabled: `launchctl print gui/$(id -u)/com.xakep666.ps3netsrv-go` (should print service details)
+8. Done!
 
 ### Note for non-glibc Linux distros users
 Due to usage of `purego` all Linux executables in releases are dynamically linked ones. 
@@ -203,7 +242,31 @@ There are two ways to resolve this issue:
 * Run with loader: `/lib/ld-musl-<arch>.so.1 /path/to/ps3netsrv-go`. Downside: `libchdr` likely will not be loaded so CHD support will be disabled.
 
 ### Windows
-To run as a service it's recommended to use [NSSM](https://nssm.cc/usage). It allows to specify user, startup args and environment variables. 
+
+To install ps3netsrv-go as Windows Service use `svc install` subcommand. 
+It requires `--config` flag to be set to explicitly point which config should be used.
+Auto-start is disabled by default for security reasons. However it could be enabled with `--auto-start` flag.
+
+There are some other subcommands in `svc` to control service, check out `--help` for detailed usage.
+
+### FreeBSD
+
+Nothing special is needed for the project to run on FreeBSD.
+1. [Build an executable](#building)
+2. Copy `ps3netsrv-go` executable to `/usr/local/bin`
+3. Install libchdr
+4. (optional) Add an rc script
+```bash
+cp <project-root>/package/freebsd/ps3netsrv /usr/local/etc/rc.d/
+mkdir -vp /var/run/ps3netsrv
+mkdir -vp /usr/local/ps3netsrv
+cp <project-root>/package/freebsd/config.ini /usr/local/ps3netsrv/
+sysrc ps3netsrv_enable=YES
+```
+5. (optional) Add a special user for the rc script
+```bash
+pw useradd ps3 -m -s /usr/sbin/nologin -c "ps3netsrv user" -u 361
+```
 
 ## Performance tips
 * Connect your console to the network using ethernet cable. To achieve maximum performance server and console
@@ -223,7 +286,7 @@ You can build ISO image using `makeiso` subcommand.
     * [ngrok](https://ngrok.com/docs/secure-tunnels/tunnels/tcp-tunnels/) TCP tunnels
     * [Reverse SSH tunnel](https://jfrog.com/connect/post/reverse-ssh-tunneling-from-start-to-end/) to host with public IP
     * any other options
-* To secure connection using TLS you may use two TLS-terminators (like [HAProxy](https://www.haproxy.org/)) configured with mutual TLS authentication. Note that desired terminator must support "wrapping" plain TCP connection to TLS with client certificate. 
+* To secure connection using TLS you may use two TLS-terminators (like [Stunnel](https://www.stunnel.org/) or [HAProxy](https://www.haproxy.org/)) configured with mutual TLS authentication. Note that desired terminator must support "wrapping" plain TCP connection to TLS with client certificate. 
 
 ## Requirements to build
 [Go 1.26+](https://go.dev/dl/)

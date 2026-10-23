@@ -26,7 +26,8 @@ jobs:
             goname: darwin
             libc: none
         include:
-          # arm support only for linux with hard-float support
+          # arm support with soft-float, should not affect performance (libchdr doesn't use float/double)
+          # but bring better portability for old arm-based NAS hardware
           - arch:
               name: arm
               goname: arm
@@ -34,20 +35,21 @@ jobs:
               name: linux
               cmakename: Linux
               goname: linux
-              libc: gnueabihf
+              libc: gnueabi.2.10
         exclude:
           # windows arm64 version can't compile
           - arch:
               name: aarch64
             os:
               name: windows
+    name: Build libchdr on ${{ matrix.os.name }}/${{ matrix.arch.name }}
     runs-on: ubuntu-latest
     env:
       ZIGCC_FLAGS: '--target=${{ matrix.arch.name }}-${{ matrix.os.name }}-${{ matrix.os.libc }}'
       ZIGCC_BLACKLIST_FLAGS: '-Wl,-exported_symbol,_chd_*' # fails for macos
     steps:
       - name: "Checkout libchdr"
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: rtissera/libchdr
           ref: v0.3.0
@@ -82,7 +84,7 @@ jobs:
           find "$BUILDDIR" -name 'libchdr.dll' -type f -exec cp {} "$STAGEDIR/" \;
           (cd "$STAGEDIR" && tar -cf "$DISTDIR/libchdr.tar" libchdr.*)
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: libchdr-${{ matrix.os.goname }}-${{ matrix.arch.goname }}
           path: ${{ github.workspace }}/dist/libchdr.tar
