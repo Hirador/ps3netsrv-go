@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"path"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -89,6 +90,18 @@ func (s *Server[StateT]) serveConn(conn net.Conn) {
 	ctx.Context, ctx.cancel = context.WithCancel(s.deriveConnContext(conn))
 
 	log := s.Logger.With(logutil.StringerAttr("remote", conn.RemoteAddr()))
+
+	// A panic while serving one connection (e.g. a malformed game that trips the
+	// ISO/viso encoder) must not take down the whole daemon and disconnect every
+	// other client. Contain it to this connection.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("Recovered from panic while serving connection",
+				slog.Any("panic", r),
+				slog.String("stack", string(debug.Stack())),
+			)
+		}
+	}()
 
 	log.Info("Client connected")
 

@@ -454,3 +454,23 @@ func MangleStringD1(in string, joliet bool) StringD1 {
 
 	return StringD1(ret)
 }
+
+// MangleStringDMax mangles like MangleStringD and then truncates the result so
+// it fits a fixed-length ISO-9660 field of at most maxBytes bytes. ISO-9660
+// identifier fields (e.g. the 32-byte volume identifier) are fixed size, so a
+// source name longer than the field must be truncated rather than overflow it
+// (the original ps3netsrv truncates silently; without this the fixed-length
+// encoder panics with "encoded data too large"). For joliet (UTF-16BE encoded)
+// strings the limit is rounded down to a whole 2-byte code unit so a character
+// is never split.
+func MangleStringDMax(in string, joliet bool, maxBytes SizeBytes) StringD {
+	s := string(MangleStringD(in, joliet))
+	max := int(maxBytes)
+	if max > 0 && len(s) > max {
+		if joliet {
+			max -= max % 2
+		}
+		s = s[:max]
+	}
+	return StringD(s)
+}

@@ -31,21 +31,21 @@ qnap_arch_to_go() {
 }
 
 # CHD (MAME compressed disc image) support needs the purego build + an external
-# libchdr.so loaded at runtime. That only works where the CPU has hardware FP
-# (purego's call bridge uses VFP) AND the QTS glibc is recent enough (>= ~2.21)
-# to load a modern shared library. The 64-bit arches are always modern QTS with
-# hardware FP, so we enable CHD there. Legacy 32-bit ARM stays on the fully
-# static nopurego build (CHD off) which runs on any QTS/libc:
-#   - arm-x19 (ARMv5) has no VFP at all -> purego SIGILLs;
-#   - arm-x31/arm-x41 (ARMv7) span old QTS 4.3 (glibc 2.17) where a purego build
-#     may not even start. ISO/CSO/ZSO/PKG streaming is unaffected on all arches.
+# libchdr.so loaded at runtime. purego's ARM call bridge historically required
+# hardware FP (VFP), which the ARMv5 Kirkwood lacks; purego v0.11.1 adds proper
+# ARM soft-float support (verified on a real ARMv5 unit), so arm-x19 is now
+# CHD-capable too. Its libchdr must be built ARMv5TE soft-float against an old
+# glibc (see build-libchdr.sh); the 64-bit arches use a plain modern-glibc lib.
+# arm-x31/arm-x41 (ARMv7) are left static for now (old QTS 4.3 glibc 2.17).
+# ISO/CSO/ZSO/PKG streaming is unaffected on all arches.
 #
-# qnap_arch_chd_target <qdk-arch>  ->  prints the C cross-compiler triple to
-# build libchdr for (non-empty = CHD-enabled arch), or "" for static/no-CHD.
+# qnap_arch_chd_target <qdk-arch>  ->  prints a libchdr build target
+# (non-empty = CHD-enabled arch), or "" for static/no-CHD.
 qnap_arch_chd_target() {
     case "$1" in
-        x86_64) echo "x86_64" ;;   # native gcc
-        arm_64) echo "aarch64" ;;  # aarch64-linux-gnu-gcc
-        *)      echo "" ;;
+        x86_64)  echo "x86_64" ;;        # native gcc
+        arm_64)  echo "aarch64" ;;       # aarch64-linux-gnu-gcc
+        arm-x19) echo "arm-softfloat" ;; # ARMv5TE soft-float, old glibc, lowram libchdr
+        *)       echo "" ;;
     esac
 }

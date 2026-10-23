@@ -18,27 +18,30 @@ older hardware:
 
 ## CHD support — compatibility disclaimer
 
-> **CHD (MAME compressed disc image) support requires a QNAP with `glibc >= 2.21`
-> and a hardware-FP CPU (x86-64, ARM64, or modern ARMv7).** Check yours over SSH
-> with `ldd --version`. It is **not** available on legacy models: Marvell
-> Kirkwood **ARMv5** (no hardware floating point) or units still on **QTS 4.3.x
-> (glibc 2.17)**. All other formats (ISO / CSO / ZSO / PKG) work on **every**
-> supported model.
+> **CHD (MAME compressed disc image) support is enabled on `x86_64`, `arm_64`
+> and `arm-x19` (Marvell Kirkwood ARMv5).** All other formats (ISO / CSO / ZSO /
+> PKG) work on **every** supported model regardless.
 >
-> Accordingly, the **`x86_64` and `arm_64` packages ship with CHD enabled**
-> (purego + a bundled `libchdr.so`); the **32-bit ARM packages are CHD-free
-> static builds** that run on any QTS/libc. Grab the package matching your model,
-> and if you specifically need CHD, confirm your glibc first.
+> Each CHD-enabled package bundles a matching `libchdr.so` that purego dlopens at
+> runtime. The 64-bit packages use a plain modern-glibc library; the `arm-x19`
+> package bundles an ARMv5TE soft-float library built against an old glibc so it
+> loads on the Kirkwood's glibc 2.5 (and uses libchdr's low-RAM decode path, which
+> suits the 128-256 MB these units have). CHD on ARMv5 relies on purego's ARM
+> soft-float support (purego >= v0.11.1).
+>
+> Still CHD-free for now: `x86` (32-bit Intel) and the ARMv7 models `arm-x31` /
+> `arm-x41`, which span old QTS 4.3 (glibc 2.17). Grab the package matching your
+> model.
 
-This was verified on real hardware: CHD works on an x86-64 unit (glibc 2.21) and
-a modern glibc; it is rejected by the QTS 4.3 loader (glibc 2.17) and impossible
-on ARMv5 (purego's ARM call bridge uses VFP instructions the CPU lacks).
+Verified on real hardware: CHD opens and plays on an x86-64 unit, on ARM64, and
+on a Marvell Kirkwood **ARMv5** unit (QTS 4.3, glibc 2.5). It remains unavailable
+on the ARMv7 QTS 4.3 (glibc 2.17) units, whose loader rejects a modern libchdr.
 
 ## Supported architectures
 
 | QDK arch | Go target | Build | CHD | Hardware |
 |---|---|---|---|---|
-| `arm-x19` | `arm` GOARM=5 | static (nopurego) | no | Marvell Kirkwood ARMv5 (TS-x19/x12) |
+| `arm-x19` | `arm` GOARM=5 | purego + libchdr (soft-float) | **yes** | Marvell Kirkwood ARMv5 (TS-x19/x12) |
 | `arm-x31` | `arm` GOARM=7 | static (nopurego) | no | Marvell Armada ARMv7 (TS-x31) |
 | `arm-x41` | `arm` GOARM=7 | static (nopurego) | no | Annapurna Alpine ARMv7 (TS-x41) |
 | `arm_64` | `arm64` | purego + libchdr | **yes** | ARMv8 64-bit |
